@@ -1,0 +1,9 @@
+version: "2.4"
+services:
+  rabbitmq:
+    image: rabbitmq:3.11-management
+    mem_limit: 128m
+    memswap_limit: 128m
+    ports:
+      - "127.0.0.1:5672:5672"
+      - "15672:15672"

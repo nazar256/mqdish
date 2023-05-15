@@ -1,0 +1,141 @@
+name: build
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - '*'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      TEST_TARGET: x86_64-unknown-linux-musl
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - id: cache-rustup
+        name: Cache Rust toolchain
+        uses: actions/cache@v3
+        with:
+          path: ~/.rustup
+          key: rust-toolchain-${{ env.RELEASE_VERSION }}
+
+      - if: ${{ steps.cache-rustup.outputs.cache-hit != 'true' }}
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+          override: true
+          target: ${{ env.RELEASE_VERSION }}
+
+      - uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}-${{ env.RELEASE_VERSION }}
+
+      - name: Test
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+
+  build:
+    runs-on: ubuntu-latest
+    needs: test
+    permissions:
+      contents: write   # for uploading artifacts to release
+      packages: write   # for uploading docker images
+    strategy:
+      matrix:
+        include:
+          - rust_target: aarch64-unknown-linux-musl
+            docker_platform: linux/arm64/v8
+          - rust_target: armv7-unknown-linux-musleabihf
+            docker_platform: linux/arm/v7
+          - rust_target: mips64-unknown-linux-muslabi64
+            docker_platform: linux/mips64le
+          - rust_target: powerpc64le-unknown-linux-gnu
+            docker_platform: linux/ppc64le
+          - rust_target: x86_64-unknown-linux-musl
+            docker_platform: linux/amd64
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Set release version
+        run: |
+          echo "RELEASE_VERSION=${GITHUB_REF#refs/*/}" >> $GITHUB_ENV
+          echo $RELEASE_VERSION
+          echo ${{ env.RELEASE_VERSION }}
+
+      - name: build deps
+        run: sudo apt-get update && sudo apt-get install -y musl-tools libssl-dev
+
+      - id: cache-rustup
+        name: Cache Rust toolchain
+        uses: actions/cache@v3
+        with:
+          path: ~/.rustup
+          key: rust-toolchain-${{ matrix.rust_target }}-v1
+
+      - if: ${{ steps.cache-rustup.outputs.cache-hit != 'true' }}
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          target: ${{ matrix.rust_target }}
+
+      - name: Cargo cache
+        uses: pat-s/always-upload-cache@v3
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}-${{ matrix.rust_target }}
+
+      - name: Build binaries
+        uses: actions-rs/cargo@v1
+        with:
+          use-cross: ${{ matrix.rust_target != 'x86_64-unknown-linux-musl' }}
+          command: build
+          args: --release --target ${{ matrix.rust_target }} --all-targets
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+        with:
+          platforms: ${{ matrix.docker_platform }}
+
+      - name: Log in to registry
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u $ --password-stdin
+
+      - name: Build image
+        uses: docker/build-push-action@v3
+        with:
+          platforms: ${{ matrix.docker_platform }}
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/mqdish-consumer:${{ env.RELEASE_VERSION }}
+            ghcr.io/${{ github.repository_owner }}/mqdish-consumer:latest
+          build-args: |
+            BINARY_PATH=./target/${{ matrix.rust_target }}/release/mqdish-consumer
+          context: .
+
+      - name: Compress artifacts
+        run: |
+          tar -czvf mqdish-consumer.${{ matrix.rust_target }}.tar.gz target/${{ matrix.rust_target }}/release/mqdish-consumer
+          tar -czvf mqdish.${{ matrix.rust_target }}.tar.gz target/${{ matrix.rust_target }}/release/mqdish
+
+      - name: Create release and upload binaries
+        uses: ncipollo/release-action@v1
+        with:
+          allowUpdates: true
+          artifacts: mqdish*.tar.gz
+          artifactContentType: application/gzip
