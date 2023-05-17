@@ -1,6 +1,6 @@
 [package]
 name = "mqdish"
-version = "0.1.0"
+version = "1.0.1"
 edition = "2021"
 
 [[bin]]
@@ -12,10 +12,11 @@ name = "mqdish-consumer"
 path = "src/bin/consumer.rs"
 
 [dependencies]
-amiquip = "0.4.2"
 clap = { version = "4.2.7", features = ["derive"] }
 config = { version = "0.13.3", features = ["yaml-rust", "yaml"], default-features = false }
 dirs = "5.0.1"
+futures = "0.3.28"
+lapin = "2.1.1"
 openssl = { version = "0.10.52", features = ["vendored"] } # allows to statically link binaries
 serde = { version = "1.0.162", features = ["derive"] }
 serde_json = "1.0.96"

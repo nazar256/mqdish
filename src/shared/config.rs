@@ -1,5 +1,6 @@
 use std::fs::File;
 use std::path::PathBuf;
+use std::thread::available_parallelism;
 use serde::{Deserialize};
 use serde_yaml::{self};
 use thiserror::Error;
@@ -23,7 +24,14 @@ pub enum BusParams {
 #[serde(default)]
 pub struct AMQPParams {
     pub vhost: String,
+    pub prefetch: u16,
     pub heartbeat: u16,
+}
+
+impl Default for BusParams {
+    fn default() -> BusParams {
+        BusParams::AMQP(AMQPParams::default())
+    }
 }
 
 impl Default for AMQPParams {
@@ -31,6 +39,7 @@ impl Default for AMQPParams {
         AMQPParams {
             vhost: "/".to_string(),
             heartbeat: 60,
+            prefetch: available_parallelism().unwrap().get() as u16,
         }
     }
 }
@@ -76,7 +85,7 @@ impl Default for AppConfig {
             topic: "mqdish".to_string(),
             connection: Connection::DSN("amqp://".to_string()),
             credentials: Credentials::None,
-            bus_params: BusParams::AMQP(AMQPParams { vhost: "/".to_string(), heartbeat: 60 }),
+            bus_params: BusParams::AMQP(AMQPParams::default()),
         }
     }
 }

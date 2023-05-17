@@ -1,5 +1,6 @@
 use std::io::{BufRead, stdin};
 use clap::Parser;
+use futures::executor::block_on;
 use mqdish::shared::config::{AppConfig, BusParams};
 use mqdish::shared::dispatcher::Dispatcher;
 use mqdish::shared::models::Task;
@@ -36,12 +37,15 @@ fn main() {
     let args = Args::parse();
 
     let config = AppConfig::load(None).expect("Failed to load config");
-    let bus = match config.bus_params {
-        BusParams::AMQP(_) => {
-            AmqpBus::new(config.connection, config.credentials, config.bus_params, 0)
-                .expect("Failed to create AMQP bus")
+    let bus = block_on(async {
+        match config.bus_params {
+            BusParams::AMQP(_) => {
+                AmqpBus::new(config.connection, config.credentials, config.bus_params)
+                    .await
+                    .expect("AMQP driver init failed")
+            }
         }
-    };
+    });
     let mut dispatcher = Dispatcher::new(bus);
 
     let shell = args.shell.unwrap_or("sh".to_string());
