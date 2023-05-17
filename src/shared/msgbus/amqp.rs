@@ -95,7 +95,7 @@ impl AmqpBus {
 
         let connection = match conn_result {
             Ok(connection) => { connection }
-            Err(err) => { return Err(AmqpError::ConnectionFailure(err.to_string())); }
+            Err(err) => { return Err(AmqpError::ConnectionFailure(format!("URL: {}, err: {}", connection_url, err))); }
         };
 
         let channel = match connection.create_channel().await {
