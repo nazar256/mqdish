@@ -717,7 +717,7 @@ checksum = "68354c5c6bd36d73ff3feceb05efa59b6acb7626617f4962be322a825e61f79a"
 
 [[package]]
 name = "mqdish"
-version = "1.0.1"
+version = "1.0.2"
 dependencies = [
  "clap",
  "config",
@@ -725,6 +725,7 @@ dependencies = [
  "futures",
  "lapin",
  "openssl",
+ "openssl-probe",
  "rand",
  "serde",
  "serde_json",
@@ -773,6 +774,12 @@ dependencies = [
  "quote",
  "syn",
 ]
+
+[[package]]
+name = "openssl-probe"
+version = "0.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ff011a302c396a5197692431fc1948019154afc178baf7d8e37367442a4601cf"
 
 [[package]]
 name = "openssl-src"

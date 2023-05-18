@@ -34,6 +34,7 @@ struct Args {
 }
 
 fn main() {
+    openssl_probe::init_ssl_cert_env_vars();
     let args = Args::parse();
 
     let config = AppConfig::load(None).expect("Failed to load config");

@@ -1,7 +1,5 @@
 use std::{error};
 use std::error::Error;
-use std::sync::{Arc, mpsc, Mutex};
-use std::sync::mpsc::{Receiver, Sender};
 use futures::executor::block_on;
 use futures::StreamExt;
 use crate::shared::config::{BusParams, Credentials};
@@ -9,17 +7,15 @@ use crate::shared::config;
 use crate::shared::msgbus::bus::{Consumer, Message, Publisher};
 use thiserror::Error;
 use lapin::{types::FieldTable, BasicProperties, ConnectionProperties, Channel, Connection};
+use lapin::acker::Acker;
 use lapin::options::{BasicAckOptions, BasicConsumeOptions, BasicPublishOptions, BasicQosOptions, ConfirmSelectOptions, QueueDeclareOptions, QueueDeleteOptions};
 use crate::shared::config::Credentials::{LoginPassword, TLSClientAuth};
 
 pub struct AmqpBus {
     #[allow(dead_code)] // we need to keep the connection alive
     connection: Connection,
-    // channel: Channel,
     channel: Channel,
     consumption_queue: Option<String>,
-    ack_rx: Arc<Mutex<Sender<u64>>>,
-    ack_tx: Receiver<u64>,
 }
 
 #[derive(Error, Debug)]
@@ -34,15 +30,13 @@ pub enum AmqpError {
 
 struct AmqpMessage {
     body: String,
-    ack_notifier: Arc<Mutex<Sender<u64>>>,
-    delivery_tag: u64,
+    delivery_tag: Acker,
 }
 
 impl AmqpMessage {
-    fn new(body: String, ack_notifier: Arc<Mutex<Sender<u64>>>, delivery_tag: u64) -> Self {
+    fn new(body: String, delivery_tag: Acker) -> Self {
         AmqpMessage {
             body,
-            ack_notifier,
             delivery_tag,
         }
     }
@@ -50,12 +44,9 @@ impl AmqpMessage {
 
 impl<'a> Message for AmqpMessage {
     fn ack(&self) -> Result<(), Box<dyn Error>> {
-        match self.ack_notifier.lock().unwrap().send(self.delivery_tag) {
-            Ok(_) => {}
-            Err(err) => {
-                return Err(Box::new(AmqpError::ConnectionFailure(format!("Failed to send ACK notification: {}", err))));
-            }
-        }
+        let _ = block_on(async {
+            self.delivery_tag.ack(BasicAckOptions::default()).await
+        });
         Ok(())
     }
 
@@ -112,16 +103,10 @@ impl AmqpBus {
             Err(err) => { return Err(AmqpError::ConnectionFailure(err.to_string())); }
         }
 
-        let (ack_rx, ack_tx) = mpsc::channel();
-        // let ack_tx = Arc::new(Mutex::new(ack_tx));
-        let ack_rx = Arc::new(Mutex::new(ack_rx));
-
         Ok(AmqpBus {
             connection,
             channel,
             consumption_queue: None,
-            ack_rx,
-            ack_tx,
         })
     }
 
@@ -190,25 +175,12 @@ impl Consumer for AmqpBus {
                 )
                 .await.unwrap();
 
-            let acker = async {
-                for delivery_tag in &self.ack_tx {
-                    self.channel.basic_ack(delivery_tag, BasicAckOptions::default()).await.expect("ack");
-                }
-            };
-
             while let Some(delivery) = consumer.next().await {
                 let delivery = delivery.expect("no error in consumer");
                 let body = String::from_utf8_lossy(delivery.data.as_slice()).to_string();
-                let msg = AmqpMessage::new(body, Arc::clone(&self.ack_rx), delivery.delivery_tag);
+                let msg = AmqpMessage::new(body, delivery.acker);
                 process(Box::new(msg));
-                // write_deliveries.lock().unwrap().insert(delivery.delivery_tag(), delivery);
-                delivery
-                    .ack(BasicAckOptions::default())
-                    .await
-                    .expect("ack");
             }
-
-            acker.await;
         });
 
         Ok(())

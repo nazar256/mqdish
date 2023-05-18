@@ -5,6 +5,7 @@ use mqdish::shared::executor::Executor;
 use mqdish::shared::msgbus::amqp::AmqpBus;
 
 fn main() {
+    openssl_probe::init_ssl_cert_env_vars();
     let config = AppConfig::load(None).expect("Failed to load config");
     let cpus = available_parallelism().unwrap().get();
     let bus = block_on(async {
