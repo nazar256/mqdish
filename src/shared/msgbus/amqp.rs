@@ -1,7 +1,9 @@
 use std::{error};
 use std::error::Error;
+use std::pin::Pin;
+use async_trait::async_trait;
 use futures::executor::block_on;
-use futures::StreamExt;
+use futures::{Stream, StreamExt};
 use crate::shared::config::{BusParams, Credentials};
 use crate::shared::config;
 use crate::shared::msgbus::bus::{Consumer, Message, Publisher};
@@ -42,11 +44,10 @@ impl AmqpMessage {
     }
 }
 
+#[async_trait]
 impl<'a> Message for AmqpMessage {
-    fn ack(&self) -> Result<(), Box<dyn Error>> {
-        let _ = block_on(async {
-            self.delivery_tag.ack(BasicAckOptions::default()).await
-        });
+    async fn ack(&self) -> Result<(), Box<dyn Error>> {
+        let _ = self.delivery_tag.ack(BasicAckOptions::default()).await;
         Ok(())
     }
 
@@ -125,65 +126,67 @@ impl AmqpBus {
     }
 }
 
+#[async_trait]
 impl Publisher for AmqpBus {
-    fn publish(&mut self, topic: String, msg: String) -> Result<(), Box<dyn error::Error>> {
-        block_on( async {
-            self.declare_queue(&topic).await.expect("queue declare");
+    async fn publish(&mut self, topic: String, msg: String) -> Result<(), Box<dyn error::Error>> {
+        self.declare_queue(&topic).await?;
 
-            let msg_vec = msg.into_bytes();
-            let publish = self.channel.basic_publish(
-                "",
-                topic.as_str(),
-                BasicPublishOptions::default(),
-                msg_vec.as_slice(),
-                BasicProperties::default()
-                    .with_content_type("application/json".into())
-                    .with_delivery_mode(2)
-                    .with_app_id("mqdish".into()),
-            ).await;
-            match publish {
-                Err(err) => {
-                    return Err(format!("Failed to publish message: {}", err).into());
-                }
-                Ok(confirm) => {
-                    match confirm.await {
-                        Ok(_) => {}
-                        Err(err) => {
-                            return Err(format!("Failed to publish message: {}", err).into());
-                        }
+        let msg_vec = msg.into_bytes();
+        let publish = self.channel.basic_publish(
+            "",
+            topic.as_str(),
+            BasicPublishOptions::default(),
+            msg_vec.as_slice(),
+            BasicProperties::default()
+                .with_content_type("application/json".into())
+                .with_delivery_mode(2)
+                .with_app_id("mqdish".into()),
+        ).await;
+        match publish {
+            Err(err) => {
+                return Err(format!("Failed to publish message: {}", err).into());
+            }
+            // TODO: batch confirm
+            Ok(confirm) => {
+                match confirm.await {
+                    Ok(_) => {}
+                    Err(err) => {
+                        return Err(format!("Failed to publish message: {}", err).into());
                     }
                 }
             }
-            Ok(())
-        })
+        }
+        Ok(())
     }
 }
 
+#[async_trait]
 impl Consumer for AmqpBus {
-    fn consume(&mut self, topic: String, mut process: Box<dyn FnMut(Box<dyn Message + Send>)>) -> Result<(), Box<dyn Error>> {
+    async fn consume(&mut self, topic: String) -> Result<Pin<Box<dyn Stream<Item=Box<dyn Message + Send>>>>, Box<dyn Error>> {
         self.consumption_queue = Some(topic.clone());
 
-        block_on(async {
-            self.declare_queue(&topic).await.expect("queue declare");
+        self.declare_queue(&topic).await?;
 
-            let mut consumer = self.channel
-                .basic_consume(
-                    topic.as_str(),
-                    "mqdish",
-                    BasicConsumeOptions::default(),
-                    FieldTable::default(),
-                )
-                .await.unwrap();
+        let consumer = self.channel
+            .basic_consume(
+                topic.as_str(),
+                "mqdish",
+                BasicConsumeOptions::default(),
+                FieldTable::default(),
+            )
+            .await?;
 
-            while let Some(delivery) = consumer.next().await {
-                let delivery = delivery.expect("no error in consumer");
-                let body = String::from_utf8_lossy(delivery.data.as_slice()).to_string();
-                let msg = AmqpMessage::new(body, delivery.acker);
-                process(Box::new(msg));
+        let msg_stream = consumer.filter_map(|delivery| async {
+            match delivery {
+                Ok(delivery) => {
+                    let body = String::from_utf8_lossy(delivery.data.as_slice()).to_string();
+                    Some(Box::new(AmqpMessage::new(body, delivery.acker)) as Box<dyn Message + Send>)
+                }
+                _ => {None}
             }
         });
 
-        Ok(())
+        Ok(Box::pin(msg_stream))
     }
 }
 
@@ -193,7 +196,7 @@ impl Drop for AmqpBus {
             let delete_opts = QueueDeleteOptions {
                 if_empty: true,
                 if_unused: true,
-                nowait: true,
+                nowait: false,
             };
             block_on(async {
                 self.channel

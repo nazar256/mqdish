@@ -1,14 +1,20 @@
 use std::error::Error;
+use std::pin::Pin;
+use async_trait::async_trait;
+use futures::Stream;
 
+#[async_trait]
 pub trait Message: Sync {
-    fn ack(&self) -> Result<(), Box<dyn Error>>;
+    async fn ack(&self) -> Result<(), Box<dyn Error>>;
     fn body(&self) -> String;
 }
 
+#[async_trait]
 pub trait Publisher {
-    fn publish(&mut self, topic: String, msg: String) -> Result<(), Box<dyn Error>>;
+    async fn publish(&mut self, topic: String, msg: String) -> Result<(), Box<dyn Error>>;
 }
 
+#[async_trait]
 pub trait Consumer {
-    fn consume(&mut self, topic: String, process: Box<dyn FnMut(Box<dyn Message + Send>)>) -> Result<(), Box<dyn Error>>;
+    async fn consume(&mut self, topic: String) -> Result<Pin<Box<dyn Stream<Item=Box<dyn Message + Send>>>>, Box<dyn Error>>;
 }

@@ -12,6 +12,7 @@ name = "mqdish-consumer"
 path = "src/bin/consumer.rs"
 
 [dependencies]
+async-trait = "0.1.68"
 clap = { version = "4.2.7", features = ["derive"] }
 config = { version = "0.13.3", features = ["yaml-rust", "yaml"], default-features = false }
 dirs = "5.0.1"

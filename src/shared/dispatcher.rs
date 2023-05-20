@@ -11,8 +11,8 @@ impl<T: Publisher> Dispatcher<T> {
         Dispatcher { bus }
     }
 
-    pub fn dispatch(&mut self, topic: String, task: Task) -> Result<(), Box<dyn Error>> {
+    pub async fn dispatch(&mut self, topic: String, task: Task) -> Result<(), Box<dyn Error>> {
         let msg = serde_json::to_string(&task)?;
-        self.bus.publish(topic, msg)
+        self.bus.publish(topic, msg).await
     }
 }

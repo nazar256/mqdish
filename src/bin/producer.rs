@@ -38,45 +38,49 @@ fn main() {
     let args = Args::parse();
 
     let config = AppConfig::load(None).expect("Failed to load config");
-    let bus = block_on(async {
-        match config.bus_params {
+    block_on(async {
+        let bus = match config.bus_params {
             BusParams::AMQP(_) => {
                 AmqpBus::new(config.connection, config.credentials, config.bus_params)
                     .await
                     .expect("AMQP driver init failed")
             }
+        };
+
+        let mut dispatcher = Dispatcher::new(bus);
+
+        let shell = args.shell.unwrap_or("sh".to_string());
+        let concurrency_factor = args.concurrency_factor.unwrap_or(1) as f32;
+        let topic = match args.topic {
+            Some(topic) => topic,
+            None => {
+                config.topic
+            }
+        };
+
+        // TODO: maybe retry with backoff
+
+        // Read input from stdin
+        let tasks = stdin()
+            .lock()
+            .lines()
+            .filter_map(|line_result| match line_result {
+                Ok(line) => Some(line),
+                Err(error) => {
+                    eprintln!("Error reading line from STDIN: {}", error);
+                    None
+                }
+            })
+            .map(|line|  async {
+                Task {
+                    shell: shell.clone(),
+                    command: line,
+                    concurrency_factor,
+                    multithreaded: args.multithreaded.unwrap_or_default(),
+                }
+            });
+        for task in tasks {
+            dispatcher.dispatch(topic.clone(), task.await).await.expect("Failed to dispatch task");
         }
     });
-    let mut dispatcher = Dispatcher::new(bus);
-
-    let shell = args.shell.unwrap_or("sh".to_string());
-    let concurrency_factor = args.concurrency_factor.unwrap_or(1) as f32;
-    let topic = match args.topic {
-        Some(topic) => topic,
-        None => {
-            config.topic
-        }
-    };
-
-    // Read input from stdin
-    stdin()
-        .lock()
-        .lines()
-        .filter_map(|line_result| match line_result {
-            Ok(line) => Some(line),
-            Err(error) => {
-                eprintln!("Error reading line from STDIN: {}", error);
-                None
-            }
-        })
-        .for_each(|line| {
-            let task = Task {
-                shell: shell.clone(),
-                command: line,
-                concurrency_factor,
-                multithreaded: args.multithreaded.unwrap_or_default(),
-            };
-
-            dispatcher.dispatch(topic.clone(), task).expect("Failed to dispatch task");
-        });
 }
