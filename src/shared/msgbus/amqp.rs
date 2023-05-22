@@ -2,15 +2,14 @@ use std::{error};
 use std::error::Error;
 use std::pin::Pin;
 use async_trait::async_trait;
-use futures::executor::block_on;
-use futures::{Stream, StreamExt};
 use crate::shared::config::{BusParams, Credentials};
 use crate::shared::config;
-use crate::shared::msgbus::bus::{Consumer, Message, Publisher};
+use crate::shared::msgbus::bus::{Closer, Consumer, Message, Publisher};
 use thiserror::Error;
 use lapin::{types::FieldTable, BasicProperties, ConnectionProperties, Channel, Connection};
 use lapin::acker::Acker;
 use lapin::options::{BasicAckOptions, BasicConsumeOptions, BasicPublishOptions, BasicQosOptions, ConfirmSelectOptions, QueueDeclareOptions, QueueDeleteOptions};
+use tokio_stream::{Stream, StreamExt};
 use crate::shared::config::Credentials::{LoginPassword, TLSClientAuth};
 
 pub struct AmqpBus {
@@ -89,6 +88,9 @@ impl AmqpBus {
             Ok(connection) => { connection }
             Err(err) => { return Err(AmqpError::ConnectionFailure(format!("URL: {}, err: {}", connection_url, err))); }
         };
+        connection.on_error(|err| {
+            panic!("Connection error: {:?}", err);
+        });
 
         let channel = match connection.create_channel().await {
             Ok(ch) => { ch }
@@ -176,13 +178,13 @@ impl Consumer for AmqpBus {
             )
             .await?;
 
-        let msg_stream = consumer.filter_map(|delivery| async {
+        let msg_stream = consumer.filter_map(|delivery| {
             match delivery {
                 Ok(delivery) => {
                     let body = String::from_utf8_lossy(delivery.data.as_slice()).to_string();
                     Some(Box::new(AmqpMessage::new(body, delivery.acker)) as Box<dyn Message + Send>)
                 }
-                _ => {None}
+                _ => { None }
             }
         });
 
@@ -190,20 +192,21 @@ impl Consumer for AmqpBus {
     }
 }
 
-impl Drop for AmqpBus {
-    fn drop(&mut self) {
+#[async_trait]
+impl Closer for AmqpBus {
+    async fn close(&mut self) -> Result<(), Box<dyn Error>> {
         if let Some(queue) = &self.consumption_queue {
             let delete_opts = QueueDeleteOptions {
                 if_empty: true,
                 if_unused: true,
                 nowait: false,
             };
-            block_on(async {
-                self.channel
-                    .queue_delete(queue, delete_opts)
-                    .await
-                    .expect("Failed to delete unused queue");
-            });
+
+            self.channel
+                .queue_delete(queue, delete_opts)
+                .await?;
         }
+
+        Ok(())
     }
 }

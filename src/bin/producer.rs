@@ -1,10 +1,10 @@
 use std::io::{BufRead, stdin};
 use clap::Parser;
-use futures::executor::block_on;
 use mqdish::shared::config::{AppConfig, BusParams};
 use mqdish::shared::dispatcher::Dispatcher;
 use mqdish::shared::models::Task;
 use mqdish::shared::msgbus::amqp::AmqpBus;
+use mqdish::shared::msgbus::bus::Closer;
 
 /// Distributes tasks as shell commands to be executed on multiple remote workers. It receives command to execute from stdin and publishes it to the chosen message broker.
 #[derive(Parser, Debug)]
@@ -33,54 +33,55 @@ struct Args {
     multithreaded: Option<bool>,
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
     openssl_probe::init_ssl_cert_env_vars();
     let args = Args::parse();
 
     let config = AppConfig::load(None).expect("Failed to load config");
-    block_on(async {
-        let bus = match config.bus_params {
-            BusParams::AMQP(_) => {
-                AmqpBus::new(config.connection, config.credentials, config.bus_params)
-                    .await
-                    .expect("AMQP driver init failed")
-            }
-        };
-
-        let mut dispatcher = Dispatcher::new(bus);
-
-        let shell = args.shell.unwrap_or("sh".to_string());
-        let concurrency_factor = args.concurrency_factor.unwrap_or(1) as f32;
-        let topic = match args.topic {
-            Some(topic) => topic,
-            None => {
-                config.topic
-            }
-        };
-
-        // TODO: maybe retry with backoff
-
-        // Read input from stdin
-        let tasks = stdin()
-            .lock()
-            .lines()
-            .filter_map(|line_result| match line_result {
-                Ok(line) => Some(line),
-                Err(error) => {
-                    eprintln!("Error reading line from STDIN: {}", error);
-                    None
-                }
-            })
-            .map(|line|  async {
-                Task {
-                    shell: shell.clone(),
-                    command: line,
-                    concurrency_factor,
-                    multithreaded: args.multithreaded.unwrap_or_default(),
-                }
-            });
-        for task in tasks {
-            dispatcher.dispatch(topic.clone(), task.await).await.expect("Failed to dispatch task");
+    let mut bus = match config.bus_params {
+        BusParams::AMQP(_) => {
+            AmqpBus::new(config.connection, config.credentials, config.bus_params)
+                .await
+                .expect("AMQP driver init failed")
         }
-    });
+    };
+
+    let mut dispatcher = Dispatcher::new(&mut bus);
+
+    let shell = args.shell.unwrap_or("sh".to_string());
+    let concurrency_factor = args.concurrency_factor.unwrap_or(1) as f32;
+    let topic = match args.topic {
+        Some(topic) => topic,
+        None => {
+            config.topic
+        }
+    };
+
+    // TODO: maybe retry with backoff
+
+    // Read input from stdin
+    let tasks = stdin()
+        .lock()
+        .lines()
+        .filter_map(|line_result| match line_result {
+            Ok(line) => Some(line),
+            Err(error) => {
+                eprintln!("Error reading line from STDIN: {}", error);
+                None
+            }
+        })
+        .map(|line| async {
+            Task {
+                shell: shell.clone(),
+                command: line,
+                concurrency_factor,
+                multithreaded: args.multithreaded.unwrap_or_default(),
+            }
+        });
+    for task in tasks {
+        dispatcher.dispatch(topic.clone(), task.await).await.expect("Failed to dispatch task");
+    }
+
+    bus.close().await.expect("Failed to close bus");
 }

@@ -1,7 +1,7 @@
 use std::error::Error;
 use std::pin::Pin;
 use async_trait::async_trait;
-use futures::Stream;
+use tokio_stream::Stream;
 
 #[async_trait]
 pub trait Message: Sync {
@@ -17,4 +17,9 @@ pub trait Publisher {
 #[async_trait]
 pub trait Consumer {
     async fn consume(&mut self, topic: String) -> Result<Pin<Box<dyn Stream<Item=Box<dyn Message + Send>>>>, Box<dyn Error>>;
+}
+
+#[async_trait]
+pub trait Closer {
+    async fn close(&mut self) -> Result<(), Box<dyn Error>>;
 }

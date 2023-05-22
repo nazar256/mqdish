@@ -2,12 +2,12 @@ use std::error::Error;
 use crate::shared::models::Task;
 use crate::shared::msgbus::bus::Publisher;
 
-pub struct Dispatcher<T: Publisher> {
-    bus: T
+pub struct Dispatcher<'a, T: Publisher> {
+    bus: &'a mut T
 }
 
-impl<T: Publisher> Dispatcher<T> {
-    pub fn new(bus: T) -> Self {
+impl<'a, T: Publisher> Dispatcher<'a, T> {
+    pub fn new(bus: &'a mut T) -> Self {
         Dispatcher { bus }
     }
 
