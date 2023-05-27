@@ -12,6 +12,7 @@ pub struct AppConfig {
     pub credentials: Credentials,
     pub bus_params: BusParams,
     pub topic: String,
+    pub concurrency: usize,
 }
 
 #[derive(Debug, Deserialize)]
@@ -25,7 +26,8 @@ pub enum BusParams {
 pub struct AMQPParams {
     pub vhost: String,
     pub prefetch: u16,
-    pub heartbeat: u16,
+    pub heartbeat: Option<u16>,
+    pub consumer_timeout: Option<i32>,
 }
 
 impl Default for BusParams {
@@ -38,8 +40,9 @@ impl Default for AMQPParams {
     fn default() -> AMQPParams {
         AMQPParams {
             vhost: "/".to_string(),
-            heartbeat: 60,
+            heartbeat: None,
             prefetch: available_parallelism().unwrap().get() as u16,
+            consumer_timeout: None,
         }
     }
 }
@@ -86,6 +89,7 @@ impl Default for AppConfig {
             connection: Connection::DSN("amqp://".to_string()),
             credentials: Credentials::None,
             bus_params: BusParams::AMQP(AMQPParams::default()),
+            concurrency: available_parallelism().unwrap().get(),
         }
     }
 }

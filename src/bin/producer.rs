@@ -21,12 +21,6 @@ struct Args {
     #[arg(short, long)]
     shell: Option<String>,
 
-    // How many tasks to run concurrently per CPU. Default is 1.
-    // Sometimes due to nature of taks it can consume around half of CPU core,
-    // in such case you can set concurrency_factor to 2.0 to run 2 tasks per CPU core.
-    #[arg(short, long)]
-    concurrency_factor: Option<u32>,
-
     // multithreaded task means that it scales over cpu cores itself.
     // If `true` only one such task can be run on a single node, `concurrency_factor` is ignored.
     #[arg(short, long)]
@@ -50,7 +44,6 @@ async fn main() {
     let mut dispatcher = Dispatcher::new(&mut bus);
 
     let shell = args.shell.unwrap_or("sh".to_string());
-    let concurrency_factor = args.concurrency_factor.unwrap_or(1) as f32;
     let topic = match args.topic {
         Some(topic) => topic,
         None => {
@@ -75,7 +68,6 @@ async fn main() {
             Task {
                 shell: shell.clone(),
                 command: line,
-                concurrency_factor,
                 multithreaded: args.multithreaded.unwrap_or_default(),
             }
         });

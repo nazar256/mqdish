@@ -1,5 +1,6 @@
 use std::error::Error;
-use std::process::{Command, Stdio};
+use std::process::Stdio;
+use tokio::process::Command;
 use std::sync::{Arc, Mutex};
 use tokio::spawn;
 use tokio::sync::mpsc::channel;
@@ -30,7 +31,7 @@ impl<'a, T: Consumer> Executor<'a, T> {
         while let Some(msg) = msg_stream.next().await {
             let task = serde_json::from_str::<Task>(&msg.body())?;
             if task.multithreaded {
-                match exec(task.shell, task.command) {
+                match exec(task.shell, task.command).await {
                     Ok(_) => {
                         msg.ack().await?;
                     }
@@ -43,8 +44,9 @@ impl<'a, T: Consumer> Executor<'a, T> {
                 let t = task.clone();
                 let semaphore_tx = Arc::clone(&semaphore_tx);
                 let _ = semaphore_rx.send(());
+                // TODO: properly handle errors inside future
                 spawn(async move {
-                    match exec(t.shell, t.command) {
+                    match exec(t.shell, t.command).await {
                         Ok(_) => {
                             match msg.ack().await {
                                 Ok(_) => {}
@@ -75,17 +77,17 @@ impl<'a, T: Consumer> Executor<'a, T> {
     }
 }
 
-fn exec(shell: String, cmd: String) -> Result<(), Box<dyn Error + Send + Sync>> {
+async fn exec(shell: String, cmd: String) -> Result<(), Box<dyn Error + Send + Sync>> {
     let mut process = Command::new(shell)
         .arg("-c")
-        .arg(cmd)
+        .arg(cmd.clone())
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())
         .spawn()?;
 
-    let status = process.wait()?;
+    let status = process.wait().await?;
     if !status.success() {
-        return Err(format!("Command exited with non-zero status: {}", status).into());
+        return Err(format!("Command exited with non-zero status: {}, command: {}", status, cmd).into());
     }
 
     Ok(())

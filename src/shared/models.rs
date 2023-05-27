@@ -5,6 +5,5 @@ use serde::{Deserialize, Serialize};
 pub struct Task {
     pub shell: String,
     pub command: String,
-    pub concurrency_factor: f32,
     pub multithreaded : bool,
 }

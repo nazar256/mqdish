@@ -9,6 +9,7 @@ use thiserror::Error;
 use lapin::{types::FieldTable, BasicProperties, ConnectionProperties, Channel, Connection};
 use lapin::acker::Acker;
 use lapin::options::{BasicAckOptions, BasicConsumeOptions, BasicPublishOptions, BasicQosOptions, ConfirmSelectOptions, QueueDeclareOptions, QueueDeleteOptions};
+use lapin::types::AMQPValue;
 use tokio_stream::{Stream, StreamExt};
 use crate::shared::config::Credentials::{LoginPassword, TLSClientAuth};
 
@@ -16,6 +17,7 @@ pub struct AmqpBus {
     #[allow(dead_code)] // we need to keep the connection alive
     connection: Connection,
     channel: Channel,
+    consumer_timeout: Option<i32>,
     consumption_queue: Option<String>,
 }
 
@@ -70,27 +72,31 @@ impl AmqpBus {
         let connection_url = match connection_cfg {
             config::Connection::DSN(dsn) => dsn,
             config::Connection::Params(params) => {
+                let heartbeat_param = match amqp_params.heartbeat {
+                    None => {"".to_string()}
+                    Some(heartbeat) => {format!("heartbeat={}", heartbeat)}
+                };
                 format!(
-                    "{}:{}//{}:{}/{}",
+                    "{}:{}//{}:{}/{}?{}",
                     if params.ssl { "amqps" } else { "amqp" },
                     auth_part,
                     params.host,
                     params.port,
                     amqp_params.vhost,
+                    heartbeat_param,
                 )
             }
         };
-        let conn_result = Connection::connect(&connection_url,
-                                              ConnectionProperties::default(),
+        //TODO: pass executor and reactor explicitly
+        let conn_result = Connection::connect(
+            &connection_url,
+            ConnectionProperties::default()
         ).await;
 
         let connection = match conn_result {
             Ok(connection) => { connection }
-            Err(err) => { return Err(AmqpError::ConnectionFailure(format!("URL: {}, err: {}", connection_url, err))); }
+            Err(err) => { return Err(AmqpError::ConnectionFailure(format!("err: {}", err))); }
         };
-        connection.on_error(|err| {
-            panic!("Connection error: {:?}", err);
-        });
 
         let channel = match connection.create_channel().await {
             Ok(ch) => { ch }
@@ -109,11 +115,20 @@ impl AmqpBus {
         Ok(AmqpBus {
             connection,
             channel,
+            consumer_timeout: amqp_params.consumer_timeout,
             consumption_queue: None,
         })
     }
 
     async fn declare_queue(&mut self, topic: &String) -> Result<(), Box<dyn Error>> {
+        let args = match self.consumer_timeout {
+            None => FieldTable::default(),
+            Some(timeout) => {
+                let mut args = FieldTable::default();
+                args.insert("x-consumer-timeout".into(), AMQPValue::LongInt(timeout as i32));
+                args
+            }
+        };
         let _ = self.channel
             .queue_declare(
                 topic.as_str(),
@@ -121,7 +136,7 @@ impl AmqpBus {
                     durable: true,
                     ..QueueDeclareOptions::default()
                 },
-                FieldTable::default(),
+                args,
             )
             .await?;
         Ok(())
