@@ -51,8 +51,8 @@ bus_params:
     prefetch: 4
     heartbeat: 60
     consumer_timeout: 300
-topic: "mqdish"
-concurrency: 4
+topic: "mqdish" # topic to subscribe to, also used to dispatch commands if --topic is not specified
+concurrency: 4 # number of commands to execute concurrently on each worker
 ```
 
 ## Usage
@@ -65,20 +65,23 @@ This way you can dispatch batch of commands to the consumer in one line.
 In more advanced way you can produce one command which will then be turned into batch on the consumer side.
 
 ```bash
-# Basic usage, consumer just executes "SOME COMMAND"
-echo "SOME COMMAND" | mqdish
+mqdish --help
+Distributes tasks as shell commands to be executed on multiple remote workers. It receives command to execute from stdin and publishes it to the chosen message broker
 
-# Simple batch resize images
+Usage: mqdish [OPTIONS]
 
-
-
-
-# Run multi-threaded tasks
-echo "make -j8" | mqdish --multithreaded
-
-# Use a specific shell
-echo "pip install -r requirements.txt" | mqdish --shell bash
+Options:
+  -t, --topic <TOPIC>                  
+  -s, --shell <SHELL>                  
+  -m, --multithreaded <MULTITHREADED>  [possible values: true, false]
+  -h, --help                           Print help
+  -V, --version                        Print version
 ```
+
+- `-t, --topic <TOPIC>` - topic to publish commands to, if not specified, the topic from the configuration file will be used
+- `-s, --shell <SHELL>` - shell to use for command execution, if not specified, the shell from the configuration file will be used
+- `-m, --multithreaded <MULTITHREADED>` - whether the command itself is multithreaded.
+When this flag is set to true, the command will be executed exclusively (as if consumer concurrency is set to 1).
 
 ### Consumer (Worker)
 
