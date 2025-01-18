@@ -1,7 +1,7 @@
 use std::fs::File;
 use std::path::PathBuf;
 use std::thread::available_parallelism;
-use serde::{Deserialize};
+use serde::Deserialize;
 use serde_yaml::{self};
 use thiserror::Error;
 
