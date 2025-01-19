@@ -39,9 +39,10 @@ mod config_test {
                 login: "user"
                 password: "pass"
             bus_params:
-                type: AMQP
+                type: AMQP  
                 params:
                   vhost: "/"
+                  requeue: false
                 "#
             .to_string();
 

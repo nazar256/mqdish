@@ -1,4 +1,4 @@
-use std::{error};
+use std::error;
 use std::error::Error;
 use std::pin::Pin;
 use async_trait::async_trait;
@@ -8,7 +8,7 @@ use crate::shared::msgbus::bus::{Closer, Consumer, Message, Publisher};
 use thiserror::Error;
 use lapin::{types::FieldTable, BasicProperties, ConnectionProperties, Channel, Connection};
 use lapin::acker::Acker;
-use lapin::options::{BasicAckOptions, BasicConsumeOptions, BasicPublishOptions, BasicQosOptions, ConfirmSelectOptions, QueueDeclareOptions, QueueDeleteOptions};
+use lapin::options::{BasicAckOptions, BasicConsumeOptions, BasicNackOptions, BasicPublishOptions, BasicQosOptions, ConfirmSelectOptions, QueueDeclareOptions, QueueDeleteOptions};
 use lapin::types::AMQPValue;
 use tokio_stream::{Stream, StreamExt};
 use crate::shared::config::Credentials::{LoginPassword, TLSClientAuth};
@@ -19,6 +19,7 @@ pub struct AmqpBus {
     channel: Channel,
     consumer_timeout: Option<i32>,
     consumption_queue: Option<String>,
+    requeue: bool,
 }
 
 #[derive(Error, Debug)]
@@ -33,14 +34,16 @@ pub enum AmqpError {
 
 struct AmqpMessage {
     body: String,
+    requeue: bool,
     delivery_tag: Acker,
 }
 
 impl AmqpMessage {
-    fn new(body: String, delivery_tag: Acker) -> Self {
+    fn new(body: String, delivery_tag: Acker, requeue: bool) -> Self {
         AmqpMessage {
             body,
             delivery_tag,
+            requeue,
         }
     }
 }
@@ -52,10 +55,19 @@ impl<'a> Message for AmqpMessage {
         Ok(())
     }
 
+    async fn nack(&self) -> Result<(), Box<dyn Error>> {
+            let _ = self.delivery_tag.nack(BasicNackOptions {
+            requeue: self.requeue,
+            ..BasicNackOptions::default()
+        }).await;
+        Ok(())
+    }
+
     fn body(&self) -> String {
         self.body.clone()
     }
 }
+
 
 impl AmqpBus {
     pub async fn new(connection_cfg: config::Connection, credentials: Credentials, bus_params: BusParams) -> Result<Self, AmqpError> {
@@ -117,6 +129,7 @@ impl AmqpBus {
             channel,
             consumer_timeout: amqp_params.consumer_timeout,
             consumption_queue: None,
+            requeue: amqp_params.requeue,
         })
     }
 
@@ -184,6 +197,8 @@ impl Consumer for AmqpBus {
 
         self.declare_queue(&topic).await?;
 
+        let requeue = self.requeue;
+
         let consumer = self.channel
             .basic_consume(
                 topic.as_str(),
@@ -193,11 +208,11 @@ impl Consumer for AmqpBus {
             )
             .await?;
 
-        let msg_stream = consumer.filter_map(|delivery| {
+        let msg_stream = consumer.filter_map(move |delivery| {
             match delivery {
                 Ok(delivery) => {
                     let body = String::from_utf8_lossy(delivery.data.as_slice()).to_string();
-                    Some(Box::new(AmqpMessage::new(body, delivery.acker)) as Box<dyn Message + Send>)
+                    Some(Box::new(AmqpMessage::new(body, delivery.acker, requeue)) as Box<dyn Message + Send>)
                 }
                 _ => { None }
             }

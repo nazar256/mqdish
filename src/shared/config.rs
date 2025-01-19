@@ -28,6 +28,7 @@ pub struct AMQPParams {
     pub prefetch: u16,
     pub heartbeat: Option<u16>,
     pub consumer_timeout: Option<i32>,
+    pub requeue: bool,
 }
 
 impl Default for BusParams {
@@ -43,6 +44,7 @@ impl Default for AMQPParams {
             heartbeat: None,
             prefetch: available_parallelism().unwrap().get() as u16,
             consumer_timeout: None,
+            requeue: false,
         }
     }
 }

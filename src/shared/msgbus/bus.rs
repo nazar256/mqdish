@@ -6,8 +6,10 @@ use tokio_stream::Stream;
 #[async_trait]
 pub trait Message: Sync {
     async fn ack(&self) -> Result<(), Box<dyn Error>>;
+    async fn nack(&self) -> Result<(), Box<dyn Error>>;
     fn body(&self) -> String;
 }
+
 
 #[async_trait]
 pub trait Publisher {

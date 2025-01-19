@@ -39,8 +39,9 @@ MqDiSh looks for configuration in the following locations (in order):
 
 Example configuration:
 
-```yaml
-connection: "amqp://" # credentials can be passed in AMQP connection string
+```yaml 
+# credentials can be passed in AMQP connection string
+connection: "amqp://user:pass@host:port/vhost?prefetch=4&heartbeat=60&consumer_timeout=300"
 # credentials:
 #   login: "user"
 #   password: "pass"
@@ -51,6 +52,7 @@ bus_params:
     prefetch: 4
     heartbeat: 60
     consumer_timeout: 300
+    requeue: false  # whether to requeue message after execution error, otherwise it will be dropped
 topic: "mqdish" # topic to subscribe to, also used to dispatch commands if --topic is not specified
 concurrency: 4 # number of commands to execute concurrently on each worker
 ```

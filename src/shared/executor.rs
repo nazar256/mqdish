@@ -36,7 +36,7 @@ impl<'a, T: Consumer> Executor<'a, T> {
                         msg.ack().await?;
                     }
                     Err(err) => {
-                        // TODO: unack message and requeue
+                        msg.nack().await?;
                         return Err(err);
                     }
                 }
@@ -56,7 +56,7 @@ impl<'a, T: Consumer> Executor<'a, T> {
                             }
                         }
                         Err(err) => {
-                            // TODO: unack message and requeue
+                            let _ = msg.nack().await;
                             println!("Failed to execute task: {}", err);
                         }
                     }
