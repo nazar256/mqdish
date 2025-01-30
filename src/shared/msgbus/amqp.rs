@@ -103,6 +103,9 @@ impl AmqpBus {
         let conn_result = Connection::connect(
             &connection_url,
             ConnectionProperties::default()
+            .with_connection_name("mqdish-consumer".into())
+            .with_executor(tokio::runtime::Handle::current())
+            .with_reactor(tokio::runtime::Handle::current())
         ).await;
 
         let connection = match conn_result {
