@@ -1,12 +1,15 @@
 use mqdish::shared::config::{AppConfig, BusParams};
 use mqdish::shared::executor::Executor;
 use mqdish::shared::msgbus::amqp::AmqpBus;
-use mqdish::shared::msgbus::bus::{Closer};
+use mqdish::shared::msgbus::bus::Closer;
+use openssl_probe::init_openssl_env_vars;
 
 #[tokio::main]
 async fn main() {
     // TODO: graceful shutdown
-    openssl_probe::init_ssl_cert_env_vars();
+    unsafe {
+        init_openssl_env_vars();
+    }
     let config = AppConfig::load(None).expect("Failed to load config");
     let mut bus = match config.bus_params {
         BusParams::AMQP(_) => {
@@ -16,7 +19,10 @@ async fn main() {
         }
     };
 
-    Executor::new(&mut bus, config.concurrency, config.topic).run().await.expect("Executor failed");
+    Executor::new(&mut bus, config.concurrency, config.topic)
+        .run()
+        .await
+        .expect("Executor failed");
 
     bus.close().await.expect("Failed to close bus");
 }

@@ -1,12 +1,12 @@
-use std::error::Error;
-use std::process::Stdio;
-use tokio::process::Command;
-use std::sync::{Arc, Mutex};
-use tokio::spawn;
-use tokio::sync::mpsc::channel;
-use tokio_stream::StreamExt;
 use crate::shared::models::Task;
 use crate::shared::msgbus::bus::Consumer;
+use std::error::Error;
+use std::process::Stdio;
+use std::sync::Arc;
+use tokio::process::Command;
+use tokio::spawn;
+use tokio::sync::{mpsc::channel, Mutex};
+use tokio_stream::StreamExt;
 
 pub struct Executor<'a, T: Consumer> {
     bus: &'a mut T,
@@ -24,13 +24,15 @@ impl<'a, T: Consumer> Executor<'a, T> {
     }
 
     pub async fn run(&mut self) -> Result<(), Box<dyn Error>> {
-        let (semaphore_rx, semaphore_tx) = channel(self.workers);
-        let semaphore_tx = Arc::new(Mutex::new(semaphore_tx));
+        let (semaphore_tx, semaphore_rx) = channel(self.workers);
+        // let semaphore_rx = Arc::new(Mutex::new(semaphore_rx));
+        let semaphore_rx = Arc::new(Mutex::new(semaphore_rx));
+        // semaphore_rx.
 
         let mut msg_stream = self.bus.consume(self.topic.clone()).await?;
         while let Some(msg) = msg_stream.next().await {
             let task = serde_json::from_str::<Task>(&msg.body())?;
-            if task.multithreaded {
+            if task.exclusive {
                 match exec(task.shell, task.command).await {
                     Ok(_) => {
                         msg.ack().await?;
@@ -42,34 +44,24 @@ impl<'a, T: Consumer> Executor<'a, T> {
                 }
             } else {
                 let t = task.clone();
-                let semaphore_tx = Arc::clone(&semaphore_tx);
-                let _ = semaphore_rx.send(());
+                let semaphore_rx = Arc::clone(&semaphore_rx);
+                let _ = semaphore_tx.send(()).await;
                 // TODO: properly handle errors inside future
                 spawn(async move {
                     match exec(t.shell, t.command).await {
-                        Ok(_) => {
-                            match msg.ack().await {
-                                Ok(_) => {}
-                                Err(err) => {
-                                    println!("Failed to ack message: {}", err);
-                                }
+                        Ok(_) => match msg.ack().await {
+                            Ok(_) => {}
+                            Err(err) => {
+                                println!("Failed to ack message: {}", err);
                             }
-                        }
+                        },
                         Err(err) => {
                             let _ = msg.nack().await;
                             println!("Failed to execute task: {}", err);
                         }
                     }
 
-                    // release worker thread
-                    match semaphore_tx.lock() {
-                        Ok(mut tx) => {
-                            let _ = tx.recv();
-                        }
-                        Err(err) => {
-                            println!("Failed to release worker thread (recv from channel): {}", err);
-                        }
-                    }
+                    semaphore_rx.lock().await.recv().await;
                 });
             }
         }
@@ -87,7 +79,11 @@ async fn exec(shell: String, cmd: String) -> Result<(), Box<dyn Error + Send + S
 
     let status = process.wait().await?;
     if !status.success() {
-        return Err(format!("Command exited with non-zero status: {}, command: {}", status, cmd).into());
+        return Err(format!(
+            "Command exited with non-zero status: {}, command: {}",
+            status, cmd
+        )
+        .into());
     }
 
     Ok(())

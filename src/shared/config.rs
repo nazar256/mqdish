@@ -1,8 +1,8 @@
+use serde::Deserialize;
+use serde_yaml::{self};
 use std::fs::File;
 use std::path::PathBuf;
 use std::thread::available_parallelism;
-use serde::Deserialize;
-use serde_yaml::{self};
 use thiserror::Error;
 
 #[derive(Debug, Deserialize)]
@@ -96,7 +96,6 @@ impl Default for AppConfig {
     }
 }
 
-
 #[derive(Error, Debug)]
 pub enum ConfigError {
     #[error("No config file found in directories: {0}")]
@@ -105,7 +104,7 @@ pub enum ConfigError {
 
 impl AppConfig {
     pub fn load(path: Option<String>) -> Result<AppConfig, ConfigError> {
-        let paths = path.map_or_else(|| get_default_paths(), |path| vec![path]);
+        let paths = path.map_or_else(get_default_paths, |path| vec![path]);
 
         let file = paths.iter().find_map(|path| File::open(path).ok());
 
@@ -130,15 +129,12 @@ fn get_default_paths() -> Vec<String> {
     ];
 
     let home_dir: Option<PathBuf> = dirs::home_dir();
-    match home_dir {
-        Some(dir) => {
-            let mut dir = dir;
-            dir.push(".config");
-            dir.push("mqdish");
-            dir.push("config.yaml");
-            paths.push(dir.to_str().unwrap_or_default().to_string());
-        }
-        _ => {}
+    if let Some(dir) = home_dir {
+        let mut dir = dir;
+        dir.push(".config");
+        dir.push("mqdish");
+        dir.push("config.yaml");
+        paths.push(dir.to_str().unwrap_or_default().to_string());
     }
 
     paths

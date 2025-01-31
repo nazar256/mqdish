@@ -51,7 +51,7 @@ bus_params:
     vhost: "/"
     prefetch: 4
     heartbeat: 60
-    consumer_timeout: 300
+    consumer_timeout: 300000 # consumer timeout in milliseconds
     requeue: false  # whether to requeue message after execution error, otherwise it will be dropped
 topic: "mqdish" # topic to subscribe to, also used to dispatch commands if --topic is not specified
 concurrency: 4 # number of commands to execute concurrently on each worker
@@ -75,15 +75,16 @@ Usage: mqdish [OPTIONS]
 Options:
   -t, --topic <TOPIC>                  
   -s, --shell <SHELL>                  
-  -m, --multithreaded <MULTITHREADED>  [possible values: true, false]
+  -m, --exclusive <EXCLUSIVE>  [possible values: true, false]
   -h, --help                           Print help
   -V, --version                        Print version
 ```
 
 - `-t, --topic <TOPIC>` - topic to publish commands to, if not specified, the topic from the configuration file will be used
 - `-s, --shell <SHELL>` - shell to use for command execution, if not specified, the shell from the configuration file will be used
-- `-m, --multithreaded <MULTITHREADED>` - whether the command itself is multithreaded.
-When this flag is set to true, the command will be executed exclusively (as if consumer concurrency is set to 1).
+- `-m, --exclusive <EXCLUSIVE>` - whether to run this command exclusively on the worker.
+When this flag is set to true, the worker will only receive next commands after the current one is finished
+as if consumer concurrency was set to 1.
 
 ### Consumer (Worker)
 

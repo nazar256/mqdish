@@ -1,9 +1,9 @@
-use std::error::Error;
 use crate::shared::models::Task;
 use crate::shared::msgbus::bus::Publisher;
+use std::error::Error;
 
 pub struct Dispatcher<'a, T: Publisher> {
-    bus: &'a mut T
+    bus: &'a mut T,
 }
 
 impl<'a, T: Publisher> Dispatcher<'a, T> {

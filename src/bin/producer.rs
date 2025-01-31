@@ -1,10 +1,11 @@
-use std::io::{BufRead, stdin};
 use clap::Parser;
 use mqdish::shared::config::{AppConfig, BusParams};
 use mqdish::shared::dispatcher::Dispatcher;
 use mqdish::shared::models::Task;
 use mqdish::shared::msgbus::amqp::AmqpBus;
 use mqdish::shared::msgbus::bus::Closer;
+use openssl_probe::init_openssl_env_vars;
+use std::io::{stdin, BufRead};
 
 /// Distributes tasks as shell commands to be executed on multiple remote workers. It receives command to execute from stdin and publishes it to the chosen message broker.
 #[derive(Parser, Debug)]
@@ -21,15 +22,17 @@ struct Args {
     #[arg(short, long)]
     shell: Option<String>,
 
-    // multithreaded task means that it scales over cpu cores itself.
-    // If `true` only one such task can be run on a single node, `concurrency_factor` is ignored.
+    // exclusive command means that it scales over cpu cores itself and must not be run concurrently.
+    // If `true` only one such command should be run on a single node, `concurrency_factor` is ignored.
     #[arg(short, long)]
-    multithreaded: Option<bool>,
+    exclusive: Option<bool>,
 }
 
 #[tokio::main]
 async fn main() {
-    openssl_probe::init_ssl_cert_env_vars();
+    unsafe {
+        init_openssl_env_vars();
+    }
     let args = Args::parse();
 
     let config = AppConfig::load(None).expect("Failed to load config");
@@ -46,9 +49,7 @@ async fn main() {
     let shell = args.shell.unwrap_or("sh".to_string());
     let topic = match args.topic {
         Some(topic) => topic,
-        None => {
-            config.topic
-        }
+        None => config.topic,
     };
 
     // TODO: maybe retry with backoff
@@ -68,11 +69,14 @@ async fn main() {
             Task {
                 shell: shell.clone(),
                 command: line,
-                multithreaded: args.multithreaded.unwrap_or_default(),
+                exclusive: args.exclusive.unwrap_or_default(),
             }
         });
     for task in tasks {
-        dispatcher.dispatch(topic.clone(), task.await).await.expect("Failed to dispatch task");
+        dispatcher
+            .dispatch(topic.clone(), task.await)
+            .await
+            .expect("Failed to dispatch task");
     }
 
     bus.close().await.expect("Failed to close bus");

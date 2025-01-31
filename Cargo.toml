@@ -13,14 +13,14 @@ path = "src/bin/consumer.rs"
 
 [dependencies]
 async-trait = "0.1.85"
-clap = { version = "4.5.26", features = ["derive"] }
-config = { version = "0.15.6", features = [ "yaml"], default-features = false }
+clap = { version = "4.5.27", features = ["derive"] }
+config = { version = "0.15.7", features = [ "yaml"], default-features = false }
 dirs = "6.0.0"
 lapin = { version = "2.5.0", default-features = false, features = ["openssl"] }
-openssl = { version = "0.10.68", features = ["vendored"] } # allows to statically link binaries
-openssl-probe = "0.1.5"
+openssl = { version = "0.10.69", features = ["vendored"] } # allows to statically link binaries
+openssl-probe = "0.1.6"
 serde = { version = "1.0.217", features = ["derive"] }
-serde_json = "1.0.136"
+serde_json = "1.0.138"
 serde_yaml = "0.9.33"
 thiserror = "2.0.11"
 tokio = { version = "1.43.0", features = ["macros", "rt-multi-thread", "sync", "rt", "process"] }

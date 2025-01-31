@@ -1,9 +1,9 @@
 #[cfg(test)]
 mod config_test {
-    use std::fs::{File, remove_file};
-    use std::io::Write;
     use crate::shared::config::*;
     use rand::{distributions::Alphanumeric, Rng};
+    use std::fs::{remove_file, File};
+    use std::io::Write;
 
     struct TempConfigFile {
         path: String,
@@ -44,7 +44,7 @@ mod config_test {
                   vhost: "/"
                   requeue: false
                 "#
-            .to_string();
+        .to_string();
 
         let temp = TempConfigFile::new(file_contents);
 
@@ -61,7 +61,7 @@ mod config_test {
         }
 
         match config.bus_params {
-            BusParams::AMQP(AMQPParams{ .. }) => (),
+            BusParams::AMQP(AMQPParams { .. }) => (),
         }
     }
 }
