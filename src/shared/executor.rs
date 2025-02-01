@@ -39,7 +39,7 @@ impl<'a, T: Consumer> Executor<'a, T> {
                     }
                     Err(err) => {
                         msg.nack().await?;
-                        return Err(err);
+                        println!("Failed to execute task: {}", err);
                     }
                 }
             } else {

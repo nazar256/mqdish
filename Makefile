@@ -31,7 +31,7 @@ help:
 all: fmt lint check audit test build
 
 build:
-	$(CARGO) build
+	$(CARGO) build --all
 
 test:
 	$(CARGO) test
@@ -48,7 +48,7 @@ fmt:
 	$(CARGO) fmt
 
 lint:
-	$(CARGO) clippy  -- -D warnings
+	$(CARGO) clippy  --all-targets --all-features -- -D warnings
 
 audit:
 	cargo audit

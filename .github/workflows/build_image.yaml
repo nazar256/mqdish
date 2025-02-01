@@ -21,13 +21,7 @@ jobs:
       TEST_TARGET: x86_64-unknown-linux-musl
     steps:
       - uses: actions/checkout@v4
-      - uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          profile: minimal
-          override: true
-          target: ${{ env.TEST_TARGET }}
-      - uses: actions/cache@v3
+      - uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/bin/
@@ -36,7 +30,19 @@ jobs:
             ~/.cargo/git/db/
             target/
           key: ${{ runner.os }}-cargo-test-${{ hashFiles('**/Cargo.lock') }}
-      - name: Run tests
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+          override: true
+          components: clippy
+      - name: Cargo check
+        uses: actions-rs/cargo@v1
+        with:
+          command: check
+      - name: Run Clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
+      - name: Cargo test
         uses: actions-rs/cargo@v1
         with:
           command: test
@@ -67,14 +73,6 @@ jobs:
           - rust_target: s390x-unknown-linux-gnu
             docker_platform: linux/s390x
 
-          # macOS Targets (Cross-Compiled)
-          - rust_target: aarch64-apple-darwin
-          - rust_target: x86_64-apple-darwin
-
-          # Windows Targets (Cross-Compiled)
-          - rust_target: x86_64-pc-windows-msvc
-          - rust_target: i686-pc-windows-msvc
-
     steps:
       - uses: actions/checkout@v4
 
@@ -83,18 +81,6 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y musl-tools libssl-dev
-
-      # - name: Install osxcross for macOS cross-compilation
-      #   if: contains(matrix.rust_target, 'apple-darwin')
-      #   run: |
-      #     sudo apt-get install -y clang llvm lld libssl-dev
-      #     rustup target add aarch64-apple-darwin x86_64-apple-darwin
-
-      # - name: Install mingw-w64 for Windows cross-compilation
-      #   if: contains(matrix.rust_target, 'windows-msvc')
-      #   run: |
-      #     sudo apt-get install -y mingw-w64
-      #     rustup target add x86_64-pc-windows-msvc i686-pc-windows-msvc
 
       - uses: actions-rs/toolchain@v1
         with:
