@@ -129,7 +129,6 @@ jobs:
           push: true
           tags: |
             ${{ env.REGISTRY_IMAGE }}:${{ env.RELEASE_VERSION }}-${{ matrix.rust_target }}
-            ${{ env.REGISTRY_IMAGE }}:${{ env.RELEASE_VERSION }}-${{ matrix.rust_target }}
           build-args: |
             BINARY_PATH=./target/${{ matrix.rust_target }}/release/mqdish-consumer
           context: .
