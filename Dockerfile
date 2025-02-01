@@ -1,4 +1,4 @@
-FROM --platform=${TARGETPLATFORM} alpine
+FROM alpine
 
 ARG BINARY_PATH
 

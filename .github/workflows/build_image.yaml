@@ -128,7 +128,7 @@ jobs:
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
-          platforms: linux/${{ matrix.docker_platform }}
+          platforms: ${{ matrix.docker_platform }}
           push: true
           tags: |
             ${{ env.REGISTRY_IMAGE }}:${{ env.RELEASE_VERSION }}-${{ matrix.rust_target }}
