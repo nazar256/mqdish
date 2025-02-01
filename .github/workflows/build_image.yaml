@@ -51,6 +51,7 @@ jobs:
       fail-fast: false  # Continue with other targets if one fails
       matrix:
         include:
+          # Linux & Docker targets
           - rust_target: aarch64-unknown-linux-musl
             docker_platform: linux/arm64/v8
           - rust_target: armv7-unknown-linux-musleabihf
@@ -65,13 +66,35 @@ jobs:
             docker_platform: linux/386
           - rust_target: s390x-unknown-linux-gnu
             docker_platform: linux/s390x
+
+          # macOS Targets (Cross-Compiled)
+          - rust_target: aarch64-apple-darwin
+          - rust_target: x86_64-apple-darwin
+
+          # Windows Targets (Cross-Compiled)
+          - rust_target: x86_64-pc-windows-msvc
+          - rust_target: i686-pc-windows-msvc
+
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install dependencies
+      - name: Install dependencies (Linux only)
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y musl-tools libssl-dev
+
+      # - name: Install osxcross for macOS cross-compilation
+      #   if: contains(matrix.rust_target, 'apple-darwin')
+      #   run: |
+      #     sudo apt-get install -y clang llvm lld libssl-dev
+      #     rustup target add aarch64-apple-darwin x86_64-apple-darwin
+
+      # - name: Install mingw-w64 for Windows cross-compilation
+      #   if: contains(matrix.rust_target, 'windows-msvc')
+      #   run: |
+      #     sudo apt-get install -y mingw-w64
+      #     rustup target add x86_64-pc-windows-msvc i686-pc-windows-msvc
 
       - uses: actions-rs/toolchain@v1
         with:
@@ -103,6 +126,7 @@ jobs:
           args: --release --target ${{ matrix.rust_target }} --all-targets
 
       - name: Set up QEMU
+        if: matrix.docker_platform
         id: qemu
         uses: docker/setup-qemu-action@v3
         with:
@@ -120,9 +144,11 @@ jobs:
           use: true
 
       - name: Log in to registry
+        if: matrix.docker_platform
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u $ --password-stdin
 
       - name: Build and push
+        if: matrix.docker_platform
         uses: docker/build-push-action@v6
         with:
           platforms: ${{ matrix.docker_platform }}
